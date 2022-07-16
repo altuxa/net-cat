@@ -53,6 +53,7 @@ func fileRead(filename string) []byte {
 
 func fileWrite(filename string, data string) {
 	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+	defer file.Close()
 	file.WriteString(data)
 }
 
@@ -60,12 +61,13 @@ func handle(conn net.Conn) {
 	logo := fileRead("logo.txt")
 	conn.Write(logo)
 	conn.Write([]byte("\n"))
+
 	conn.Write([]byte("[ENTER YOUR NAME]: "))
-	// in := bufio.NewScanner(conn)
+
 	reader := bufio.NewReader(conn)
 	clientName, _ := reader.ReadString('\n')
 	clientName = strings.TrimSpace(clientName)
-	fmt.Println(clientName)
+
 	if len(clientName) == 0 {
 		conn.Close()
 		return
@@ -90,9 +92,6 @@ func handle(conn net.Conn) {
 	// write 1 time
 	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
 	input := bufio.NewScanner(conn)
-	// write to all users
-	// msgTime := time.Now().Format("2006-01-02 15:04:05")
-	// msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]"
 	for input.Scan() {
 		msgTime := time.Now().Format("2006-01-02 15:04:05")
 		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]"
@@ -123,9 +122,9 @@ func broadcaster() {
 	for {
 		select {
 		case msg := <-messages:
+			fileWrite("log.txt", msg.text)
 			for _, conn := range clients {
 				if msg.address == conn.Conn.RemoteAddr().String() {
-					fileWrite("log.txt", msg.text)
 					continue
 				}
 				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
@@ -133,6 +132,7 @@ func broadcaster() {
 			}
 
 		case msg := <-leaving:
+			fileWrite("log.txt", msg.text)
 			for _, conn := range clients {
 				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
 				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
