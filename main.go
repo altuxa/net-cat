@@ -46,40 +46,44 @@ func handle(conn net.Conn) {
 	conn.Write([]byte("[ENTER YOUR NAME]: "))
 	// in := bufio.NewScanner(conn)
 	reader := bufio.NewReader(conn)
-	a, _ := reader.ReadString('\n')
-	a = strings.TrimSpace(a)
-	fmt.Println(a)
-	if len(a) == 0 {
+	clientName, _ := reader.ReadString('\n')
+	clientName = strings.TrimSpace(clientName)
+	fmt.Println(clientName)
+	if len(clientName) == 0 {
 		conn.Close()
 		return
 	}
 	for {
-		if len(a) != 0 {
+		if len(clientName) != 0 {
 			break
 		}
 	}
 
 	client := Client{
 		Conn: conn,
-		Name: a,
+		Name: clientName,
 	}
 
 	clients[conn.RemoteAddr().String()] = client
-	messages <- newMessage("\n"+a, " has joined our chat...", conn)
+	messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
 	// write 1 time
-	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]" + ":"))
+	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
 	input := bufio.NewScanner(conn)
 	// write to all users
-	msg := "\n" + "[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]"
+	msg := "\n" + "[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]"
+	conn.Read([]byte(""))
 	for input.Scan() {
 		// write to 1 client
-		conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]" + ":"))
+		conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
+		if len(input.Text()) == 0 {
+			continue
+		}
 		messages <- newMessage(msg, ": "+input.Text(), conn)
 	}
 	// Delete client form map
 	delete(clients, conn.RemoteAddr().String())
 
-	leaving <- newMessage(a, " has left our chat...", conn)
+	leaving <- newMessage("\n"+clientName, " has left our chat...", conn)
 
 	conn.Close() // ignore errors
 }
@@ -107,6 +111,7 @@ func broadcaster() {
 		case msg := <-leaving:
 			for _, conn := range clients {
 				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
+				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
 			}
 
 		}
