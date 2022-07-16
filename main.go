@@ -11,38 +11,49 @@ import (
 	"time"
 )
 
+type Client struct {
+	Conn net.Conn
+	Name string
+}
+
+type Handler struct {
+	clients  map[string]Client
+	leaving  chan message
+	messages chan message
+}
+
+type message struct {
+	text    string
+	address string
+}
+
 func main() {
 	listen, err := net.Listen("tcp", "localhost:8080")
 	if err != nil {
 		log.Fatal(err)
 	}
+	handler := Handler{
+		clients:  make(map[string]Client),
+		leaving:  make(chan message),
+		messages: make(chan message),
+	}
 
-	go broadcaster()
+	go handler.broadcaster()
 	for {
 		conn, err := listen.Accept()
 		if err != nil {
 			log.Print(err)
 			continue
 		}
-		go handle(conn)
+		go handler.handle(conn)
 	}
 }
 
-type Client struct {
-	Conn net.Conn
-	Name string
-}
-
-var (
-	clients  = make(map[string]Client)
-	leaving  = make(chan message)
-	messages = make(chan message)
-)
-
-type message struct {
-	text    string
-	address string
-}
+// var (
+// 	clients  = make(map[string]Client)
+// 	leaving  = make(chan message)
+// 	messages = make(chan message)
+// )
 
 func fileRead(filename string) []byte {
 	file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
@@ -57,7 +68,7 @@ func fileWrite(filename string, data string) {
 	file.WriteString(data)
 }
 
-func handle(conn net.Conn) {
+func (h *Handler) handle(conn net.Conn) {
 	logo := fileRead("logo.txt")
 	conn.Write(logo)
 	conn.Write([]byte("\n"))
@@ -87,8 +98,8 @@ func handle(conn net.Conn) {
 		Name: clientName,
 	}
 
-	clients[conn.RemoteAddr().String()] = client
-	messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
+	h.clients[conn.RemoteAddr().String()] = client
+	h.messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
 	// write 1 time
 	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
 	input := bufio.NewScanner(conn)
@@ -100,12 +111,12 @@ func handle(conn net.Conn) {
 		if len(input.Text()) == 0 {
 			continue
 		}
-		messages <- newMessage(msg, ": "+input.Text(), conn)
+		h.messages <- newMessage(msg, ": "+input.Text(), conn)
 	}
 	// Delete client form map
-	delete(clients, conn.RemoteAddr().String())
+	delete(h.clients, conn.RemoteAddr().String())
 
-	leaving <- newMessage("\n"+clientName, " has left our chat...", conn)
+	h.leaving <- newMessage("\n"+clientName, " has left our chat...", conn)
 
 	conn.Close() // ignore errors
 }
@@ -118,12 +129,12 @@ func newMessage(name, msg string, conn net.Conn) message {
 	}
 }
 
-func broadcaster() {
+func (h *Handler) broadcaster() {
 	for {
 		select {
-		case msg := <-messages:
+		case msg := <-h.messages:
 			fileWrite("log.txt", msg.text)
-			for _, conn := range clients {
+			for _, conn := range h.clients {
 				if msg.address == conn.Conn.RemoteAddr().String() {
 					continue
 				}
@@ -131,9 +142,9 @@ func broadcaster() {
 				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
 			}
 
-		case msg := <-leaving:
+		case msg := <-h.leaving:
 			fileWrite("log.txt", msg.text)
-			for _, conn := range clients {
+			for _, conn := range h.clients {
 				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
 				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
 			}
