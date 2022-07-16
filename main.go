@@ -70,11 +70,13 @@ func handle(conn net.Conn) {
 	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
 	input := bufio.NewScanner(conn)
 	// write to all users
-	msg := "\n" + "[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]"
-	conn.Read([]byte(""))
+	// msgTime := time.Now().Format("2006-01-02 15:04:05")
+	// msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]"
 	for input.Scan() {
+		msgTime := time.Now().Format("2006-01-02 15:04:05")
+		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]"
 		// write to 1 client
-		conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
+		conn.Write([]byte("[" + msgTime + "]" + "[" + clientName + "]" + ":"))
 		if len(input.Text()) == 0 {
 			continue
 		}
