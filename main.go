@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
@@ -42,7 +44,22 @@ type message struct {
 	address string
 }
 
+func fileRead(filename string) []byte {
+	file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	defer file.Close()
+	data, _ := io.ReadAll(file)
+	return data
+}
+
+func fileWrite(filename string, data string) {
+	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+	file.WriteString(data)
+}
+
 func handle(conn net.Conn) {
+	logo := fileRead("logo.txt")
+	conn.Write(logo)
+	conn.Write([]byte("\n"))
 	conn.Write([]byte("[ENTER YOUR NAME]: "))
 	// in := bufio.NewScanner(conn)
 	reader := bufio.NewReader(conn)
@@ -58,6 +75,10 @@ func handle(conn net.Conn) {
 			break
 		}
 	}
+
+	logData := fileRead("log.txt")
+	conn.Write(logData)
+	conn.Write([]byte("\n"))
 
 	client := Client{
 		Conn: conn,
@@ -104,6 +125,7 @@ func broadcaster() {
 		case msg := <-messages:
 			for _, conn := range clients {
 				if msg.address == conn.Conn.RemoteAddr().String() {
+					fileWrite("log.txt", msg.text)
 					continue
 				}
 				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
