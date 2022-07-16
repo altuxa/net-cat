@@ -1,80 +1,115 @@
 package main
 
 import (
-	"flag"
+	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"os"
-)
-
-var (
-	listen = flag.Bool("l", false, "Listen")
-	host   = flag.String("h", "localhost", "Host")
-	port   = flag.Int("p", 0, "Port")
+	"strings"
+	"time"
 )
 
 func main() {
-	flag.Parse()
-	fmt.Println(*listen)
-	if *listen {
-		startServer()
-		return
+	listen, err := net.Listen("tcp", "localhost:8080")
+	if err != nil {
+		log.Fatal(err)
 	}
-	fmt.Println(flag.Arg(0))
-	fmt.Println(flag.Arg(1))
-	fmt.Println(*listen)
-	if len(flag.Args()) < 2 {
-		fmt.Println("Hostname and port required")
-		return
+
+	go broadcaster()
+	for {
+		conn, err := listen.Accept()
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+		go handle(conn)
 	}
-	serverHost := flag.Arg(0)
-	serverPort := flag.Arg(1)
-	startClient(fmt.Sprintf("%s:%s", serverHost, serverPort))
 }
 
-func startServer() {
-	addr := fmt.Sprintf("%s:%d", *host, *port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		panic(err)
+type Client struct {
+	Conn net.Conn
+	Name string
+}
+
+var (
+	clients  = make(map[string]Client)
+	leaving  = make(chan message)
+	messages = make(chan message)
+)
+
+type message struct {
+	text    string
+	address string
+}
+
+func handle(conn net.Conn) {
+	conn.Write([]byte("[ENTER YOUR NAME]: "))
+	// in := bufio.NewScanner(conn)
+	reader := bufio.NewReader(conn)
+	a, _ := reader.ReadString('\n')
+	a = strings.TrimSpace(a)
+	fmt.Println(a)
+	if len(a) == 0 {
+		conn.Close()
+		return
 	}
-
-	log.Printf("Listening for connections on %s", listener.Addr().String())
-
 	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Printf("Error accepting connection from client: %s", err)
-		} else {
-			// fmt.Println(conn)
-			var text string
-			// fmt.Scan(&text)
-			go processClient(text, conn)
+		if len(a) != 0 {
+			break
 		}
 	}
+
+	client := Client{
+		Conn: conn,
+		Name: a,
+	}
+
+	clients[conn.RemoteAddr().String()] = client
+	messages <- newMessage("\n"+a, " has joined our chat...", conn)
+	// write 1 time
+	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]" + ":"))
+	input := bufio.NewScanner(conn)
+	// write to all users
+	msg := "\n" + "[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]"
+	for input.Scan() {
+		// write to 1 client
+		conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + a + "]" + ":"))
+		messages <- newMessage(msg, ": "+input.Text(), conn)
+	}
+	// Delete client form map
+	delete(clients, conn.RemoteAddr().String())
+
+	leaving <- newMessage(a, " has left our chat...", conn)
+
+	conn.Close() // ignore errors
 }
 
-func processClient(s string, conn net.Conn) {
-	_, err := io.Copy(os.Stdout, conn)
-	// message, _ := bufio.NewReader(conn).ReadString('\n')
-	// fmt.Print(s + message)
-	if err != nil {
-		fmt.Println(err)
+func newMessage(name, msg string, conn net.Conn) message {
+	addr := conn.RemoteAddr().String()
+	return message{
+		text:    name + msg,
+		address: addr,
 	}
-	conn.Close()
 }
 
-func startClient(addr string) {
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		fmt.Printf("Can't connect to server: %s\n", err)
-		return
-	}
-	_, err = io.Copy(conn, os.Stdin)
-	if err != nil {
-		fmt.Printf("Connection error: %s\n", err)
+func broadcaster() {
+	for {
+		select {
+		case msg := <-messages:
+			for _, conn := range clients {
+				if msg.address == conn.Conn.RemoteAddr().String() {
+					continue
+				}
+				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
+				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
+			}
+
+		case msg := <-leaving:
+			for _, conn := range clients {
+				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
+			}
+
+		}
 	}
 }
 
