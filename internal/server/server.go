@@ -14,6 +14,7 @@ type Handler struct {
 	clients  map[string]Client
 	leaving  chan message
 	messages chan message
+	logs     []string
 }
 
 type Client struct {
@@ -53,8 +54,8 @@ func (h *Handler) Handle(conn net.Conn) {
 	// 	}
 	// }
 
-	logData := helpers.FileRead("log.txt")
-	fmt.Fprintf(conn, "%s\n", logData)
+	logData := h.LogsReader()
+	fmt.Fprintf(conn, "%s", logData)
 
 	client := Client{
 		Conn: conn,
@@ -97,6 +98,7 @@ func (h *Handler) Broadcaster() {
 		select {
 		case msg := <-h.messages:
 			helpers.FileWrite("log.txt", msg.text)
+			h.LogsWriter(strings.TrimSpace(msg.text))
 			for _, client := range h.clients {
 				if msg.address == client.Conn.RemoteAddr().String() {
 					continue
@@ -106,10 +108,25 @@ func (h *Handler) Broadcaster() {
 			}
 		case msg := <-h.leaving:
 			helpers.FileWrite("log.txt", msg.text)
+			h.LogsWriter(strings.TrimSpace(msg.text))
 			for _, client := range h.clients {
 				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		}
 	}
+}
+
+func (h *Handler) LogsWriter(log string) {
+	h.logs = append(h.logs, log+"\n")
+}
+
+func (h *Handler) LogsReader() (logs string) {
+	if len(h.logs) < 1 {
+		return logs
+	}
+	for _, s := range h.logs {
+		logs = logs + s
+	}
+	return logs
 }
