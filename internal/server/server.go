@@ -1,21 +1,14 @@
-package main
+package server
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
-)
 
-type Client struct {
-	Conn net.Conn
-	Name string
-}
+	"github.com/altuxa/net-cat/internal/helpers"
+)
 
 type Handler struct {
 	clients  map[string]Client
@@ -23,72 +16,45 @@ type Handler struct {
 	messages chan message
 }
 
+type Client struct {
+	Conn net.Conn
+	Name string
+}
+
 type message struct {
 	text    string
 	address string
 }
 
-func main() {
-	arg := os.Args[1:]
-	port, err := CheckPort(arg)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	listen, err := net.Listen("tcp", "localhost:"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Listening on the port :" + port)
-	handler := NewHandler()
-	go handler.broadcaster()
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		go handler.handle(conn)
+func NewHandler() *Handler {
+	return &Handler{
+		clients:  make(map[string]Client),
+		leaving:  make(chan message),
+		messages: make(chan message),
 	}
 }
 
-func fileRead(filename string) []byte {
-	file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
-	defer file.Close()
-	data, _ := io.ReadAll(file)
-	return data
-}
-
-func fileWrite(filename string, data string) {
-	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
-	defer file.Close()
-	file.WriteString(data)
-}
-
-func (h *Handler) handle(conn net.Conn) {
-	logo := fileRead("logo.txt")
-	conn.Write(logo)
-	conn.Write([]byte("\n"))
-
-	conn.Write([]byte("[ENTER YOUR NAME]: "))
+func (h *Handler) Handle(conn net.Conn) {
+	logo := helpers.FileRead("logo.txt")
+	fmt.Fprintf(conn, "%s\n[ENTER YOUR NAME]: ", logo)
 
 	reader := bufio.NewReader(conn)
 	clientName, _ := reader.ReadString('\n')
 	clientName = strings.TrimSpace(clientName)
 
 	if len(clientName) == 0 {
+		fmt.Fprintln(conn, "Try again, name is required")
 		conn.Close()
 		return
 	}
-	for {
-		if len(clientName) != 0 {
-			break
-		}
-	}
+	// for {
+	// 	if len(clientName) != 0 {
+	// 		break
+	// 	}
+	// }
 
-	logData := fileRead("log.txt")
-	conn.Write(logData)
-	conn.Write([]byte("\n"))
+	logData := helpers.FileRead("log.txt")
+	fmt.Fprintf(conn, "%s\n", logData)
 
 	client := Client{
 		Conn: conn,
@@ -102,13 +68,13 @@ func (h *Handler) handle(conn net.Conn) {
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
 		msgTime := time.Now().Format("2006-01-02 15:04:05")
-		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]"
+		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]" + ":"
 		// write to 1 client
 		conn.Write([]byte("[" + msgTime + "]" + "[" + clientName + "]" + ":"))
 		if len(input.Text()) == 0 {
 			continue
 		}
-		h.messages <- newMessage(msg, ":"+input.Text(), conn)
+		h.messages <- newMessage(msg, input.Text(), conn)
 	}
 	// Delete client form map
 	delete(h.clients, conn.RemoteAddr().String())
@@ -126,11 +92,11 @@ func newMessage(name, msg string, conn net.Conn) message {
 	}
 }
 
-func (h *Handler) broadcaster() {
+func (h *Handler) Broadcaster() {
 	for {
 		select {
 		case msg := <-h.messages:
-			fileWrite("log.txt", msg.text)
+			helpers.FileWrite("log.txt", msg.text)
 			for _, client := range h.clients {
 				if msg.address == client.Conn.RemoteAddr().String() {
 					continue
@@ -139,41 +105,11 @@ func (h *Handler) broadcaster() {
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		case msg := <-h.leaving:
-			fileWrite("log.txt", msg.text)
+			helpers.FileWrite("log.txt", msg.text)
 			for _, client := range h.clients {
 				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		}
-	}
-}
-
-func IsNumber(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func CheckPort(arg []string) (string, error) {
-	port := "8989"
-	if len(arg) > 1 {
-		return "", errors.New("[USAGE]: ./TCPChat $port")
-	} else if len(arg) == 1 {
-		if !IsNumber(arg[0]) {
-			return "", errors.New("[USAGE]: ./TCPChat $port")
-		}
-		port = arg[0]
-	}
-	return port, nil
-}
-
-func NewHandler() *Handler {
-	return &Handler{
-		clients:  make(map[string]Client),
-		leaving:  make(chan message),
-		messages: make(chan message),
 	}
 }
