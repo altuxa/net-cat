@@ -28,10 +28,23 @@ type message struct {
 }
 
 func main() {
-	listen, err := net.Listen("tcp", "localhost:8080")
+	arg := os.Args[1:]
+	port := "8989"
+	if len(arg) > 1 {
+		fmt.Println("[USAGE]: ./TCPChat $port")
+		return
+	} else if len(arg) == 1 {
+		port = arg[0]
+		if !IsNumber(port) {
+			fmt.Println("[USAGE]: ./TCPChat $port")
+			return
+		}
+	}
+	listen, err := net.Listen("tcp", "localhost:"+port)
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("Listening on the port :" + port)
 	handler := Handler{
 		clients:  make(map[string]Client),
 		leaving:  make(chan message),
@@ -48,12 +61,6 @@ func main() {
 		go handler.handle(conn)
 	}
 }
-
-// var (
-// 	clients  = make(map[string]Client)
-// 	leaving  = make(chan message)
-// 	messages = make(chan message)
-// )
 
 func fileRead(filename string) []byte {
 	file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
@@ -111,7 +118,7 @@ func (h *Handler) handle(conn net.Conn) {
 		if len(input.Text()) == 0 {
 			continue
 		}
-		h.messages <- newMessage(msg, ": "+input.Text(), conn)
+		h.messages <- newMessage(msg, ":"+input.Text(), conn)
 	}
 	// Delete client form map
 	delete(h.clients, conn.RemoteAddr().String())
@@ -134,126 +141,30 @@ func (h *Handler) broadcaster() {
 		select {
 		case msg := <-h.messages:
 			fileWrite("log.txt", msg.text)
-			for _, conn := range h.clients {
-				if msg.address == conn.Conn.RemoteAddr().String() {
+			for _, client := range h.clients {
+				if msg.address == client.Conn.RemoteAddr().String() {
 					continue
 				}
-				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
-				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
+				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
+				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 
 		case msg := <-h.leaving:
 			fileWrite("log.txt", msg.text)
-			for _, conn := range h.clients {
-				fmt.Fprintln(conn.Conn, msg.text) // NOTE: ignoring network errors
-				conn.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + conn.Name + "]" + ":"))
+			for _, client := range h.clients {
+				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
+				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 
 		}
 	}
 }
 
-// package main
-
-// import "net"
-// import "fmt"
-// import "bufio"
-// import "strings" // требуется только ниже для обработки примера
-
-// func main() {
-
-//   fmt.Println("Launching server...")
-
-//   // Устанавливаем прослушивание порта
-//   ln, _ := net.Listen("tcp", ":8081")
-
-//   // Открываем порт
-//   conn, _ := ln.Accept()
-
-//   // Запускаем цикл
-//   for {
-//     // Будем прослушивать все сообщения разделенные \n
-//     message, _ := bufio.NewReader(conn).ReadString('\n')
-//     // Распечатываем полученое сообщение
-//     fmt.Print("Message Received:", string(message))
-//     // Процесс выборки для полученной строки
-//     newmessage := strings.ToUpper(message)
-//     // Отправить новую строку обратно клиенту
-//     conn.Write([]byte(newmessage + "\n"))
-//   }
-// }
-
-// func Socket() {
-// 	// Подключаемся к сокету
-// 	conn, _ := net.Dial("tcp", "127.0.0.1:8080")
-// 	for {
-// 		// Чтение входных данных от stdin
-// 		reader := bufio.NewReader(os.Stdin)
-// 		fmt.Print("Text to send: ")
-// 		text, _ := reader.ReadString('\n')
-// 		// Отправляем в socket
-// 		fmt.Fprintf(conn, text+"\n")
-// 		// Прослушиваем ответ
-// 		message, _ := bufio.NewReader(conn).ReadString('\n')
-// 		fmt.Print("Message from server: " + message)
-// 	}
-// }
-
-/////////////////////////////////////////////////////////
-// package server
-
-// import (
-// 	"bufio"
-// 	"log"
-// 	"net"
-// 	"strings"
-// )
-
-// type Server struct {
-// 	Addr string
-// }
-
-// func (srv Server) ListenAndServe() error {
-// 	addr := srv.Addr
-// 	if addr == "" {
-// 		addr = ":8080"
-// 	}
-// 	log.Printf("starting server on %v\n", addr)
-// 	listener, err := net.Listen("tcp", addr)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer listener.Close()
-// 	for {
-// 		conn, err := listener.Accept()
-// 		if err != nil {
-// 			log.Printf("error accepting connection %v", err)
-// 			continue
-// 		}
-// 		log.Printf("accepted connection from %v", conn.RemoteAddr())
-// 		handle(conn)
-// 	}
-// }
-
-// func handle(conn net.Conn) error {
-// 	defer func() {
-// 		log.Printf("closing connection from %v", conn.RemoteAddr())
-// 		conn.Close()
-// 	}()
-// 	r := bufio.NewReader(conn)
-// 	w := bufio.NewWriter(conn)
-// 	scanr := bufio.NewScanner(r)
-// 	for {
-// 		scanned := scanr.Scan()
-// 		if !scanned {
-// 			if err := scanr.Err(); err != nil {
-// 				log.Printf("%v(%v)", err, conn.RemoteAddr())
-// 				return err
-// 			}
-// 			break
-// 		}
-// 		w.WriteString(strings.ToUpper(scanr.Text()) + "\n")
-// 		w.Flush()
-// 	}
-// 	return nil
-// }
+func IsNumber(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
