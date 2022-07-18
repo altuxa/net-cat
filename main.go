@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -29,33 +30,22 @@ type message struct {
 
 func main() {
 	arg := os.Args[1:]
-	port := "8989"
-	if len(arg) > 1 {
-		fmt.Println("[USAGE]: ./TCPChat $port")
+	port, err := CheckPort(arg)
+	if err != nil {
+		fmt.Println(err)
 		return
-	} else if len(arg) == 1 {
-		port = arg[0]
-		if !IsNumber(port) {
-			fmt.Println("[USAGE]: ./TCPChat $port")
-			return
-		}
 	}
 	listen, err := net.Listen("tcp", "localhost:"+port)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Listening on the port :" + port)
-	handler := Handler{
-		clients:  make(map[string]Client),
-		leaving:  make(chan message),
-		messages: make(chan message),
-	}
-
+	handler := NewHandler()
 	go handler.broadcaster()
 	for {
 		conn, err := listen.Accept()
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 			continue
 		}
 		go handler.handle(conn)
@@ -148,14 +138,12 @@ func (h *Handler) broadcaster() {
 				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
-
 		case msg := <-h.leaving:
 			fileWrite("log.txt", msg.text)
 			for _, client := range h.clients {
 				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
-
 		}
 	}
 }
@@ -167,4 +155,25 @@ func IsNumber(s string) bool {
 		}
 	}
 	return true
+}
+
+func CheckPort(arg []string) (string, error) {
+	port := "8989"
+	if len(arg) > 1 {
+		return "", errors.New("[USAGE]: ./TCPChat $port")
+	} else if len(arg) == 1 {
+		if !IsNumber(arg[0]) {
+			return "", errors.New("[USAGE]: ./TCPChat $port")
+		}
+		port = arg[0]
+	}
+	return port, nil
+}
+
+func NewHandler() *Handler {
+	return &Handler{
+		clients:  make(map[string]Client),
+		leaving:  make(chan message),
+		messages: make(chan message),
+	}
 }
