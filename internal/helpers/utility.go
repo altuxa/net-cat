@@ -28,15 +28,25 @@ func CheckPort(arg []string) (string, error) {
 	return port, nil
 }
 
-func FileRead(filename string) []byte {
-	file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+func FileRead(filename string) ([]byte, error) {
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
 	defer file.Close()
-	data, _ := io.ReadAll(file)
-	return data
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
-func FileWrite(filename string, data string) {
-	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+func FileWrite(filename string, data string) error {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
 	defer file.Close()
 	file.WriteString(data)
+	return nil
 }

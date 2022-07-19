@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -36,7 +37,14 @@ func NewHandler() *Handler {
 }
 
 func (h *Handler) Handle(conn net.Conn) {
-	logo := helpers.FileRead("logo.txt")
+	logo, err := helpers.FileRead("logo.txt")
+	if err != nil {
+		log.Println(err)
+		fmt.Fprintf(conn, "%s, please try again later\n", err)
+		conn.Close()
+		return
+	}
+
 	fmt.Fprintf(conn, "%s\n[ENTER YOUR NAME]: ", logo)
 
 	reader := bufio.NewReader(conn)
@@ -64,8 +72,10 @@ func (h *Handler) Handle(conn net.Conn) {
 	}
 	// Add client to the map
 	h.clients[conn.RemoteAddr().String()] = client
+
 	h.messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
 	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
+
 	// scan all msg
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
@@ -80,9 +90,7 @@ func (h *Handler) Handle(conn net.Conn) {
 
 	// Delete client from map
 	delete(h.clients, conn.RemoteAddr().String())
-
 	h.leaving <- newMessage("\n"+clientName, " has left our chat...", conn)
-
 	conn.Close()
 }
 
@@ -98,7 +106,10 @@ func (h *Handler) Broadcaster() {
 	for {
 		select {
 		case msg := <-h.messages:
-			helpers.FileWrite("log.txt", msg.text)
+			err := helpers.FileWrite("log.txt", msg.text)
+			if err != nil {
+				log.Println(err)
+			}
 			h.LogsWriter(strings.TrimSpace(msg.text))
 			for _, client := range h.clients {
 				if msg.address == client.Conn.RemoteAddr().String() {
@@ -108,7 +119,10 @@ func (h *Handler) Broadcaster() {
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		case msg := <-h.leaving:
-			helpers.FileWrite("log.txt", msg.text)
+			err := helpers.FileWrite("log.txt", msg.text)
+			if err != nil {
+				log.Println(err)
+			}
 			h.LogsWriter(strings.TrimSpace(msg.text))
 			for _, client := range h.clients {
 				fmt.Fprintln(client.Conn, msg.text)
