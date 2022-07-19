@@ -40,9 +40,7 @@ func (h *Handler) Handle(conn net.Conn) {
 	logo, err := helpers.FileRead("logo.txt")
 	if err != nil {
 		log.Println(err)
-		fmt.Fprintf(conn, "%s, please try again later\n", err)
-		conn.Close()
-		return
+		fmt.Fprintf(conn, "%s, oops something went wrong and the logo didn't load\n", err)
 	}
 
 	fmt.Fprintf(conn, "%s\n[ENTER YOUR NAME]: ", logo)
@@ -74,14 +72,14 @@ func (h *Handler) Handle(conn net.Conn) {
 	h.clients[conn.RemoteAddr().String()] = client
 
 	h.messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
-	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
+	fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), clientName)
 
 	// scan all msg
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
 		msgTime := time.Now().Format("2006-01-02 15:04:05")
-		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]" + ":"
-		conn.Write([]byte("[" + msgTime + "]" + "[" + clientName + "]" + ":"))
+		msg := fmt.Sprintf("\n[%s][%s]:", msgTime, clientName)
+		fmt.Fprintf(conn, "[%s][%s]:", msgTime, clientName)
 		if len(input.Text()) == 0 {
 			continue
 		}
@@ -111,12 +109,13 @@ func (h *Handler) Broadcaster() {
 				log.Println(err)
 			}
 			h.LogsWriter(strings.TrimSpace(msg.text))
+			msgTime := time.Now().Format("2006-01-02 15:04:05")
 			for _, client := range h.clients {
 				if msg.address == client.Conn.RemoteAddr().String() {
 					continue
 				}
 				fmt.Fprintln(client.Conn, msg.text)
-				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
+				client.Conn.Write([]byte(fmt.Sprintf("[%s][%s]:", msgTime, client.Name)))
 			}
 		case msg := <-h.leaving:
 			err := helpers.FileWrite("log.txt", msg.text)
@@ -124,9 +123,10 @@ func (h *Handler) Broadcaster() {
 				log.Println(err)
 			}
 			h.LogsWriter(strings.TrimSpace(msg.text))
+			msgTime := time.Now().Format("2006-01-02 15:04:05")
 			for _, client := range h.clients {
 				fmt.Fprintln(client.Conn, msg.text)
-				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
+				client.Conn.Write([]byte(fmt.Sprintf("[%s][%s]:", msgTime, client.Name)))
 			}
 		}
 	}

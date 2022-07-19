@@ -17,11 +17,11 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	listen, err := net.Listen("tcp", "localhost:"+port)
+	listen, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", port))
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Listening on the port :" + port)
+	fmt.Printf("Listening on the port :%s\n", port)
 	handler := server.NewHandler()
 	go handler.Broadcaster()
 	for {
