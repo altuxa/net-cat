@@ -48,11 +48,12 @@ func (h *Handler) Handle(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	// for {
-	// 	if len(clientName) != 0 {
-	// 		break
-	// 	}
-	// }
+
+	if len(h.clients) == 10 {
+		fmt.Fprintln(conn, "Chat is full, please try again later")
+		conn.Close()
+		return
+	}
 
 	logData := h.LogsReader()
 	fmt.Fprintf(conn, "%s", logData)
@@ -61,28 +62,28 @@ func (h *Handler) Handle(conn net.Conn) {
 		Conn: conn,
 		Name: clientName,
 	}
-
+	// Add client to the map
 	h.clients[conn.RemoteAddr().String()] = client
 	h.messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
-	// write 1 time
 	conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + clientName + "]" + ":"))
+	// scan all msg
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
 		msgTime := time.Now().Format("2006-01-02 15:04:05")
 		msg := "\n" + "[" + msgTime + "]" + "[" + clientName + "]" + ":"
-		// write to 1 client
 		conn.Write([]byte("[" + msgTime + "]" + "[" + clientName + "]" + ":"))
 		if len(input.Text()) == 0 {
 			continue
 		}
 		h.messages <- newMessage(msg, input.Text(), conn)
 	}
-	// Delete client form map
+
+	// Delete client from map
 	delete(h.clients, conn.RemoteAddr().String())
 
 	h.leaving <- newMessage("\n"+clientName, " has left our chat...", conn)
 
-	conn.Close() // ignore errors
+	conn.Close()
 }
 
 func newMessage(name, msg string, conn net.Conn) message {
@@ -103,14 +104,14 @@ func (h *Handler) Broadcaster() {
 				if msg.address == client.Conn.RemoteAddr().String() {
 					continue
 				}
-				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
+				fmt.Fprintln(client.Conn, msg.text)
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		case msg := <-h.leaving:
 			helpers.FileWrite("log.txt", msg.text)
 			h.LogsWriter(strings.TrimSpace(msg.text))
 			for _, client := range h.clients {
-				fmt.Fprintln(client.Conn, msg.text) // NOTE: ignoring network errors
+				fmt.Fprintln(client.Conn, msg.text)
 				client.Conn.Write([]byte("[" + time.Now().Format("2006-01-02 15:04:05") + "]" + "[" + client.Name + "]" + ":"))
 			}
 		}
@@ -122,9 +123,6 @@ func (h *Handler) LogsWriter(log string) {
 }
 
 func (h *Handler) LogsReader() (logs string) {
-	if len(h.logs) < 1 {
-		return logs
-	}
 	for _, s := range h.logs {
 		logs = logs + s
 	}
