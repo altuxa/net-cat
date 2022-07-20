@@ -25,6 +25,12 @@ func CheckPort(arg []string) (string, error) {
 		}
 		port = arg[0]
 	}
+	num := simpleAtoi(port)
+	if num < 1 {
+		return "", errors.New("port number too small: " + port)
+	} else if num > 65535 {
+		return "", errors.New("port number too large: " + port)
+	}
 	return port, nil
 }
 
@@ -49,4 +55,13 @@ func FileWrite(filename string, data string) error {
 	defer file.Close()
 	file.WriteString(data)
 	return nil
+}
+
+// strconv un allowed package
+func simpleAtoi(s string) (num int) {
+	for _, i := range s {
+		i = i - 48
+		num = num*10 + int(i)
+	}
+	return num
 }
