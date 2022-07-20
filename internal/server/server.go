@@ -11,23 +11,6 @@ import (
 	"github.com/altuxa/net-cat/internal/helpers"
 )
 
-type Handler struct {
-	clients  map[string]Client
-	leaving  chan message
-	messages chan message
-	logs     []string
-}
-
-type Client struct {
-	Conn net.Conn
-	Name string
-}
-
-type message struct {
-	text    string
-	address string
-}
-
 func NewHandler() *Handler {
 	return &Handler{
 		clients:  make(map[string]Client),
@@ -98,47 +81,4 @@ func newMessage(name, msg string, conn net.Conn) message {
 		text:    name + msg,
 		address: addr,
 	}
-}
-
-func (h *Handler) Broadcaster() {
-	for {
-		select {
-		case msg := <-h.messages:
-			err := helpers.FileWrite("log.txt", msg.text)
-			if err != nil {
-				log.Println(err)
-			}
-			h.LogsWriter(strings.TrimSpace(msg.text))
-			msgTime := time.Now().Format("2006-01-02 15:04:05")
-			for _, client := range h.clients {
-				if msg.address == client.Conn.RemoteAddr().String() {
-					continue
-				}
-				fmt.Fprintln(client.Conn, msg.text)
-				client.Conn.Write([]byte(fmt.Sprintf("[%s][%s]:", msgTime, client.Name)))
-			}
-		case msg := <-h.leaving:
-			err := helpers.FileWrite("log.txt", msg.text)
-			if err != nil {
-				log.Println(err)
-			}
-			h.LogsWriter(strings.TrimSpace(msg.text))
-			msgTime := time.Now().Format("2006-01-02 15:04:05")
-			for _, client := range h.clients {
-				fmt.Fprintln(client.Conn, msg.text)
-				client.Conn.Write([]byte(fmt.Sprintf("[%s][%s]:", msgTime, client.Name)))
-			}
-		}
-	}
-}
-
-func (h *Handler) LogsWriter(log string) {
-	h.logs = append(h.logs, log+"\n")
-}
-
-func (h *Handler) LogsReader() (logs string) {
-	for _, s := range h.logs {
-		logs = logs + s
-	}
-	return logs
 }
