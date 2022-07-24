@@ -1,12 +1,16 @@
 package server
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
 type Handler struct {
 	clients  map[string]Client
 	leaving  chan message
 	messages chan message
 	logs     []string
+	mut      sync.Mutex
 }
 
 type Client struct {

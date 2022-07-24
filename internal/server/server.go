@@ -52,8 +52,9 @@ func (h *Handler) Handle(conn net.Conn) {
 		Name: clientName,
 	}
 	// Add client to the map
+	h.mut.Lock()
 	h.clients[conn.RemoteAddr().String()] = client
-
+	h.mut.Unlock()
 	h.messages <- newMessage("\n"+clientName, " has joined our chat...", conn)
 	fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), clientName)
 
